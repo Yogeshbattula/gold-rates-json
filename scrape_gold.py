@@ -28,7 +28,7 @@ if soup:
     # --- LOGIC FOR 22 CARAT (1 Gram) ---
     try:
         # We search specifically for the "22" header to get the RIGHT table
-        # We look for a header that has "22" inside it
+        # We look for a header (h2, h3, or div) that has "22" inside it
         header22 = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and "22" in tag.text)
         
         if header22:
