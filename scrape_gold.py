@@ -21,58 +21,50 @@ gold24 = "0"
 silver = "88,000.00" 
 
 def clean_price(price_str):
-    # Removes '₹', 'Rs', and spaces, but KEEPS commas
     return price_str.replace('₹', '').replace('Rs', '').strip()
 
 if soup:
-    # --- LOGIC FOR 22 CARAT (1 Gram) ---
-    try:
-        # We search specifically for the "22" header to get the RIGHT table
-        # We look for a header (h2, h3, or div) that has "22" inside it
-        header22 = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and "22" in tag.text)
+    # --- STRATEGY: FIND ALL TABLES AND CHECK HEADERS ABOVE THEM ---
+    # GoodReturns usually has 24k table first, then 22k table.
+    # We will loop through ALL headers to find the right matches.
+    
+    all_headers = soup.find_all(['h2', 'h3', 'div'])
+    
+    for header in all_headers:
+        text = header.get_text().strip()
         
-        if header22:
-            # Get the table strictly belonging to this header
-            table = header22.find_next("table")
+        # --- LOGIC FOR 24 CARAT (10 Grams) ---
+        if "24" in text and ("Carat" in text or "క్యారెట్ల" in text):
+            # Found 24k Header -> Look at the table immediately below it
+            table = header.find_next("table")
             if table:
                 for row in table.find_all("tr"):
                     cols = row.find_all("td")
                     if not cols: continue
-                    
-                    # Look for "1" in the first column (1 Gram)
-                    amount = cols[0].get_text().strip()
-                    if amount == "1" or amount == "1 Gram" or amount == "1 గ్రాము":
-                        gold22 = clean_price(cols[1].get_text().strip())
-                        print(f"Found 22k (1g): {gold22}")
-                        break
-    except Exception as e:
-        print(f"Error 22k: {e}")
-
-    # --- LOGIC FOR 24 CARAT (10 Grams) ---
-    try:
-        # We search specifically for the "24" header
-        header24 = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and "24" in tag.text)
-        
-        if header24:
-            table = header24.find_next("table")
-            if table:
-                for row in table.find_all("tr"):
-                    cols = row.find_all("td")
-                    if not cols: continue
-                    
-                    # Look for "10" in the first column (10 Grams)
-                    amount = cols[0].get_text().strip()
-                    if amount == "10" or amount == "10 Gram" or amount == "10 గ్రాముల":
+                    # We want "10 gram"
+                    if "10" in cols[0].get_text() and gold24 == "0":
                         gold24 = clean_price(cols[1].get_text().strip())
-                        print(f"Found 24k (10g): {gold24}")
-                        break
-    except Exception as e:
-        print(f"Error 24k: {e}")
+                        print(f"Found 24k (10g) in table below '{text}': {gold24}")
+
+        # --- LOGIC FOR 22 CARAT (1 Gram) ---
+        if "22" in text and ("Carat" in text or "క్యారెట్ల" in text):
+            # Found 22k Header -> Look at the table immediately below it
+            table = header.find_next("table")
+            if table:
+                for row in table.find_all("tr"):
+                    cols = row.find_all("td")
+                    if not cols: continue
+                    # We want "1 gram"
+                    # We strictly check for '1' to avoid '10' or '100'
+                    amount_text = cols[0].get_text().strip()
+                    if (amount_text == "1" or amount_text.startswith("1 ")) and gold22 == "0":
+                        gold22 = clean_price(cols[1].get_text().strip())
+                        print(f"Found 22k (1g) in table below '{text}': {gold22}")
 
 # 3. SAVE TO JSON
 data = {
-    "gold22": gold22,  # Should be around 13,145
-    "gold24": gold24,  # Should be around 1,43,400
+    "gold22": gold22,  # Target: ~13,145
+    "gold24": gold24,  # Target: ~1,43,400
     "silver": silver,
     "timestamp": datetime.datetime.now().strftime("%I:%M %p")
 }
