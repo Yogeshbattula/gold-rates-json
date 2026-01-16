@@ -1,13 +1,15 @@
 name: Update Gold Rates
 
 on:
-  workflow_dispatch: # This creates the manual "Run" button
+  workflow_dispatch:      # Allows you to click the button manually
+  schedule:
+    - cron: '30 3 * * *'  # Runs automatically at 3:30 AM UTC (which is 9:00 AM India Time)
 
 jobs:
   scrape-and-update:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allows the bot to save the file
+      contents: write 
       
     steps:
       - name: Checkout Code
