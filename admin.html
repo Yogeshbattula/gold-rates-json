@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gold Rate Admin Panel</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: 0 auto; background: #f4f4f4; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
+        input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;}
+        button { width: 100%; padding: 12px; margin-top: 20px; border: none; background: #28a745; color: white; font-size: 16px; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #218838; }
+        .status { margin-top: 15px; text-align: center; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>🪙 Update Gold Rates</h2>
+    
+    <label>GitHub Token (Keep Secret!)</label>
+    <input type="password" id="token" placeholder="Paste your PAT token here">
+
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+
+    <label>22 Carat (1 Gram)</label>
+    <input type="text" id="gold22" placeholder="e.g. 13,145">
+
+    <label>24 Carat (10 Grams)</label>
+    <input type="text" id="gold24" placeholder="e.g. 1,43,400">
+
+    <button onclick="updateRates()">🚀 Save to App</button>
+    <div class="status" id="status"></div>
+</div>
+
+<script>
+    // REPO DETAILS - CHANGE THESE IF NEEDED
+    const USERNAME = "Yogeshbattula"; 
+    const REPO = "gold-rates-json";
+    const FILE_PATH = "rates.json";
+
+    async function updateRates() {
+        const token = document.getElementById('token').value;
+        const gold22 = document.getElementById('gold22').value;
+        const gold24 = document.getElementById('gold24').value;
+        const status = document.getElementById('status');
+
+        if (!token || !gold22 || !gold24) {
+            status.innerHTML = "❌ Please fill all fields!";
+            status.style.color = "red";
+            return;
+        }
+
+        status.innerHTML = "⏳ Updating...";
+        status.style.color = "blue";
+
+        try {
+            // 1. Get current file SHA (Required by GitHub API to update)
+            const getUrl = `https://api.github.com/repos/${USERNAME}/${REPO}/contents/${FILE_PATH}`;
+            const getResp = await fetch(getUrl, {
+                headers: { "Authorization": `token ${token}` }
+            });
+            const getData = await getResp.json();
+            const sha = getData.sha;
+
+            // 2. Prepare new data
+            const newData = {
+                gold22: gold22,
+                gold24: gold24,
+                silver: "88,000.00",
+                timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            };
+            
+            // Convert content to Base64 (Required by GitHub)
+            const content = btoa(unescape(encodeURIComponent(JSON.stringify(newData, null, 2))));
+
+            // 3. Push Update
+            const putResp = await fetch(getUrl, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `token ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: "Manual update via Admin Panel",
+                    content: content,
+                    sha: sha
+                })
+            });
+
+            if (putResp.ok) {
+                status.innerHTML = "✅ Success! App updated.";
+                status.style.color = "green";
+            } else {
+                const err = await putResp.json();
+                status.innerHTML = "❌ Error: " + err.message;
+                status.style.color = "red";
+            }
+
+        } catch (error) {
+            console.error(error);
+            status.innerHTML = "❌ Connection Failed";
+        }
+    }
+</script>
+
+</body>
+</html>
