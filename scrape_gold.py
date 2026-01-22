@@ -3,71 +3,67 @@ import json
 import datetime
 import re
 
-# 1. FETCH THE PAGE CONTENT (Text only)
-url = "https://telugu.goodreturns.in/gold-rates/hyderabad.html"
-headers = {'User-Agent': 'Mozilla/5.0'}
-print(f"Fetching {url}...")
+# 1. SETUP (Try English URL first, it's usually cleaner)
+url = "https://www.goodreturns.in/gold-rates/hyderabad.html"
+# We act like a real Chrome browser to avoid being blocked
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
 
+print(f"Fetching {url}...")
 try:
     response = requests.get(url, headers=headers)
+    print(f"Status Code: {response.status_code}") # Should be 200
     text = response.text
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"Error fetching page: {e}")
     text = ""
 
-# 2. FIND PRICES USING PATTERN MATCHING (REGEX)
-# We look for patterns like "13,145" or "1,43,400"
-# This ignores HTML tags completely.
-
-# Find all numbers that look like prices (digits with commas)
+# 2. FIND ALL NUMBERS (REGEX)
+# This looks for any number pattern like "14,340" or "1,43,400"
+# It ignores all HTML tags.
 matches = re.findall(r'₹?[\s]*([0-9]{1,3}(?:,[0-9]{2,3})+)', text)
 
-print(f"All patterns found: {matches}")
-
-gold22 = "0"
-gold24 = "0"
-silver = "88,000.00"
-
+# Convert all matches to pure integers (e.g., 14340)
 found_prices = []
-
-# Convert matches to integers to find the right ones
-for price_str in matches:
+for m in matches:
     try:
-        # Remove commas to check value
-        val = int(price_str.replace(',', '').strip())
+        val = int(m.replace(',', '').strip())
         found_prices.append(val)
     except:
         continue
 
-# Sort numbers: High to Low
-found_prices.sort(reverse=True)
-print(f"Sorted Valid Prices: {found_prices}")
+# Sort from Highest to Lowest
+found_prices = sorted(list(set(found_prices)), reverse=True)
+print(f"All Numbers Found: {found_prices}")
 
-# LOGIC:
-# The prices on the page are usually:
-# ~1,43,000 (24k 10g)
-# ~1,31,000 (22k 10g)
-# ~14,300   (24k 1g)
-# ~13,100   (22k 1g)
+# 3. MATH LOGIC (The Smart Part)
+gold22 = "0"
+gold24 = "0"
+silver = "88,000.00"
 
-# We want 24k (10g) -> Highest value > 100,000
-for p in found_prices:
-    if p > 100000:
-        gold24 = "{:,}".format(p) # Format back to 1,43,400
-        break
+# LOGIC FOR 10 GRAMS (24k vs 22k)
+# Prices for 10g are usually between 1,00,000 and 2,00,000
+prices_10g = [p for p in found_prices if 100000 < p < 200000]
 
-# We want 22k (1g) -> Value around 13,000 (but less than 24k 1g)
-# We look for a price between 10,000 and 20,000
-possible_1g = [p for p in found_prices if 10000 < p < 20000]
+if len(prices_10g) >= 2:
+    gold24 = "{:,}".format(prices_10g[0]) # Highest is 24k (e.g. 1,56,000)
+elif len(prices_10g) == 1:
+    gold24 = "{:,}".format(prices_10g[0])
 
-if len(possible_1g) >= 2:
-    # If we find 14k and 13k, the SMALLER one is 22k
-    gold22 = "{:,}".format(possible_1g[1]) # The second highest is 22k
-elif len(possible_1g) == 1:
-    # If we only find one, it's risky, but assume it's the rate
-    gold22 = "{:,}".format(possible_1g[0])
+# LOGIC FOR 1 GRAM (22k)
+# Prices for 1g are usually between 10,000 and 20,000
+prices_1g = [p for p in found_prices if 10000 < p < 20000]
 
-# 3. SAVE TO JSON
+if len(prices_1g) >= 2:
+    # If we find two 1g prices, the LOWER one is usually 22k (e.g. 14,300 vs 15,600)
+    # We explicitly look for the smaller one
+    gold22 = "{:,}".format(prices_1g[-1]) 
+elif len(prices_1g) == 1:
+    gold22 = "{:,}".format(prices_1g[0])
+
+# 4. SAVE DATA
 data = {
     "gold22": gold22,
     "gold24": gold24,
