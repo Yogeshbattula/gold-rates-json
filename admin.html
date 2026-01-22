@@ -3,80 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Rate Admin Panel</title>
+    <title>Gold App Command Center</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 400px; margin: 0 auto; background: #f4f4f4; }
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; }
-        label { display: block; margin-top: 15px; font-weight: bold; }
-        input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; box-sizing: border-box;}
-        button { width: 100%; padding: 12px; margin-top: 20px; border: none; background: #28a745; color: white; font-size: 16px; border-radius: 5px; cursor: pointer; }
-        button:hover { background: #218838; }
-        .status { margin-top: 15px; text-align: center; font-size: 14px; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #eef2f3; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 420px; }
+        h2 { text-align: center; color: #333; margin-bottom: 25px; font-weight: 700; }
+        
+        label { display: block; margin-top: 15px; font-weight: 600; color: #555; font-size: 14px; }
+        input { width: 100%; padding: 12px; margin-top: 5px; border: 2px solid #eee; border-radius: 8px; font-size: 16px; transition: 0.3s; box-sizing: border-box; }
+        input:focus { border-color: #007bff; outline: none; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 25px; }
+        button { flex: 1; padding: 12px; border: none; font-size: 15px; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        
+        .btn-fetch { background: #17a2b8; color: white; }
+        .btn-fetch:hover { background: #138496; }
+        
+        .btn-save { background: #28a745; color: white; }
+        .btn-save:hover { background: #218838; }
+
+        .status { margin-top: 20px; text-align: center; font-size: 14px; min-height: 20px; font-weight: 500;}
+        
+        .note { font-size: 12px; color: #999; text-align: center; margin-top: 20px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>🪙 Update Gold Rates</h2>
+    <h2>🪙 Gold Rate Admin</h2>
     
-    <label>GitHub Token (Keep Secret!)</label>
-    <input type="password" id="token" placeholder="Paste your PAT token here">
+    <label>GitHub Token 🔑</label>
+    <input type="password" id="token" placeholder="Paste ghp_... token here">
 
-    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+    <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
 
     <label>22 Carat (1 Gram)</label>
-    <input type="text" id="gold22" placeholder="e.g. 13,145">
+    <input type="text" id="gold22" placeholder="Click Fetch...">
 
     <label>24 Carat (10 Grams)</label>
-    <input type="text" id="gold24" placeholder="e.g. 1,43,400">
+    <input type="text" id="gold24" placeholder="Click Fetch...">
 
-    <button onclick="updateRates()">🚀 Save to App</button>
-    <div class="status" id="status"></div>
+    <div class="btn-group">
+        <button class="btn-fetch" onclick="fetchFromWeb()">🌍 Fetch Data</button>
+        <button class="btn-save" onclick="saveToApp()">🚀 Update App</button>
+    </div>
+
+    <div class="status" id="status">Ready to update.</div>
+    <div class="note">Fetch connects to GoodReturns.in via Proxy</div>
 </div>
 
 <script>
-    // REPO DETAILS - CHANGE THESE IF NEEDED
+    // --- CONFIGURATION ---
     const USERNAME = "Yogeshbattula"; 
     const REPO = "gold-rates-json";
     const FILE_PATH = "rates.json";
+    // Proxy to bypass CORS blocking
+    const PROXY_URL = "https://api.allorigins.win/get?url=";
+    const TARGET_URL = "https://www.goodreturns.in/gold-rates/hyderabad.html";
 
-    async function updateRates() {
+    // --- 1. FETCH FROM WEBSITE ---
+    async function fetchFromWeb() {
+        const status = document.getElementById('status');
+        const g22Input = document.getElementById('gold22');
+        const g24Input = document.getElementById('gold24');
+
+        status.innerHTML = "⏳ Scanning Website...";
+        status.style.color = "blue";
+        g22Input.value = "...";
+        g24Input.value = "...";
+
+        try {
+            // Fetch HTML via Proxy
+            const response = await fetch(PROXY_URL + encodeURIComponent(TARGET_URL));
+            const data = await response.json();
+            const text = data.contents;
+
+            // Regex Logic (Same as Python script)
+            const matches = text.match(/[\d,]{2,10}/g);
+            
+            // Filter and Sort Numbers
+            let prices = matches.map(p => parseInt(p.replace(/,/g, '')))
+                                .filter(p => !isNaN(p) && p > 5000);
+            
+            prices = [...new Set(prices)].sort((a, b) => b - a); // Sort High to Low
+
+            console.log("Found Prices:", prices);
+
+            // Logic: 
+            // 24k (10g) is usually > 1,00,000 (Highest number)
+            // 22k (1g) is usually ~13,000 (Look for number between 10k and 20k)
+
+            let p24 = prices.find(p => p > 100000); // First number above 1 Lakh
+            let p22_candidates = prices.filter(p => p > 10000 && p < 20000);
+            
+            // Usually the smaller of the 1g prices is 22k
+            let p22 = p22_candidates.length > 0 ? p22_candidates[p22_candidates.length - 1] : 0;
+
+            if (p24) g24Input.value = p24.toLocaleString('en-IN');
+            if (p22) g22Input.value = p22.toLocaleString('en-IN');
+
+            status.innerHTML = "✅ Data Fetched! Verify values.";
+            status.style.color = "green";
+
+        } catch (err) {
+            console.error(err);
+            status.innerHTML = "❌ Fetch failed. Enter manually.";
+            status.style.color = "red";
+            g22Input.value = "";
+            g24Input.value = "";
+        }
+    }
+
+    // --- 2. SAVE TO GITHUB ---
+    async function saveToApp() {
         const token = document.getElementById('token').value;
         const gold22 = document.getElementById('gold22').value;
         const gold24 = document.getElementById('gold24').value;
         const status = document.getElementById('status');
 
-        if (!token || !gold22 || !gold24) {
-            status.innerHTML = "❌ Please fill all fields!";
+        if (!token) {
+            status.innerHTML = "❌ Missing Token!";
             status.style.color = "red";
             return;
         }
 
-        status.innerHTML = "⏳ Updating...";
+        status.innerHTML = "⏳ Uploading to App...";
         status.style.color = "blue";
 
         try {
-            // 1. Get current file SHA (Required by GitHub API to update)
+            // Get current file SHA
             const getUrl = `https://api.github.com/repos/${USERNAME}/${REPO}/contents/${FILE_PATH}`;
-            const getResp = await fetch(getUrl, {
-                headers: { "Authorization": `token ${token}` }
-            });
+            const getResp = await fetch(getUrl, { headers: { "Authorization": `token ${token}` } });
+            
+            if (!getResp.ok) throw new Error("Token Invalid or Repo not found");
+            
             const getData = await getResp.json();
-            const sha = getData.sha;
 
-            // 2. Prepare new data
+            // Prepare Data
             const newData = {
                 gold22: gold22,
                 gold24: gold24,
                 silver: "88,000.00",
                 timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
-            
-            // Convert content to Base64 (Required by GitHub)
-            const content = btoa(unescape(encodeURIComponent(JSON.stringify(newData, null, 2))));
 
-            // 3. Push Update
+            // Push Data
             const putResp = await fetch(getUrl, {
                 method: "PUT",
                 headers: {
@@ -84,24 +155,21 @@
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    message: "Manual update via Admin Panel",
-                    content: content,
-                    sha: sha
+                    message: "Admin Panel Update",
+                    content: btoa(JSON.stringify(newData, null, 2)),
+                    sha: getData.sha
                 })
             });
 
             if (putResp.ok) {
-                status.innerHTML = "✅ Success! App updated.";
+                status.innerHTML = "🎉 Success! App Updated.";
                 status.style.color = "green";
             } else {
-                const err = await putResp.json();
-                status.innerHTML = "❌ Error: " + err.message;
-                status.style.color = "red";
+                throw new Error("Upload Failed");
             }
-
-        } catch (error) {
-            console.error(error);
-            status.innerHTML = "❌ Connection Failed";
+        } catch (err) {
+            status.innerHTML = "❌ Error: " + err.message;
+            status.style.color = "red";
         }
     }
 </script>
