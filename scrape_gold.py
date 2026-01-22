@@ -1,96 +1,81 @@
 import requests
-from bs4 import BeautifulSoup
 import json
 import datetime
+import re
 
-# 1. SETUP
+# 1. FETCH THE PAGE CONTENT (Text only)
 url = "https://telugu.goodreturns.in/gold-rates/hyderabad.html"
-headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+headers = {'User-Agent': 'Mozilla/5.0'}
+print(f"Fetching {url}...")
 
-print(f"Fetching data from {url}...")
 try:
     response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.content, 'html.parser')
+    text = response.text
 except Exception as e:
-    print(f"Error connecting: {e}")
-    soup = None
+    print(f"Error: {e}")
+    text = ""
 
-# Lists to hold all the numbers we find
-found_1g_prices = []
-found_10g_prices = []
+# 2. FIND PRICES USING PATTERN MATCHING (REGEX)
+# We look for patterns like "13,145" or "1,43,400"
+# This ignores HTML tags completely.
 
-def clean_price_to_int(price_str):
-    # Turns "₹ 14,340" into the integer 14340
-    clean = price_str.replace('₹', '').replace('Rs', '').replace(',', '').strip()
-    if clean.isdigit():
-        return int(clean)
-    return 0
+# Find all numbers that look like prices (digits with commas)
+matches = re.findall(r'₹?[\s]*([0-9]{1,3}(?:,[0-9]{2,3})+)', text)
 
-def format_with_commas(price_int):
-    # Turns 14340 back into "14,340"
-    return "{:,}".format(price_int)
+print(f"All patterns found: {matches}")
 
-if soup:
-    # Get ALL tables on the page
-    tables = soup.find_all("table")
-    
-    for table in tables:
-        rows = table.find_all("tr")
-        for row in rows:
-            cols = row.find_all("td")
-            if not cols: continue
-            
-            # Get the exact text from the first column (e.g., "1" or "10")
-            amount_text = cols[0].get_text().strip()
-            price_text = cols[1].get_text().strip()
-            
-            price_val = clean_price_to_int(price_text)
-            
-            # LOGIC: If column 1 says "1", save the price
-            if amount_text == "1" or amount_text == "1 Gram" or amount_text == "1 గ్రాము":
-                if price_val > 1000: # Ignore zeroes
-                    found_1g_prices.append(price_val)
-            
-            # LOGIC: If column 1 says "10", save the price
-            if amount_text == "10" or amount_text == "10 Gram" or amount_text == "10 గ్రాముల":
-                if price_val > 10000:
-                    found_10g_prices.append(price_val)
+gold22 = "0"
+gold24 = "0"
+silver = "88,000.00"
 
-# --- THE MATH ---
-# 1. Sort lists from Highest to Lowest
-found_1g_prices.sort(reverse=True)   # Example: [14340, 13145]
-found_10g_prices.sort(reverse=True)  # Example: [143400, 131450]
+found_prices = []
 
-gold22_str = "0"
-gold24_str = "0"
+# Convert matches to integers to find the right ones
+for price_str in matches:
+    try:
+        # Remove commas to check value
+        val = int(price_str.replace(',', '').strip())
+        found_prices.append(val)
+    except:
+        continue
 
-# 2. Identify 22k vs 24k based on price
-# The HIGHER price is always 24k. The LOWER price is 22k.
+# Sort numbers: High to Low
+found_prices.sort(reverse=True)
+print(f"Sorted Valid Prices: {found_prices}")
 
-if len(found_1g_prices) >= 2:
-    # We found both tables!
-    # 22k is the CHEAPER one (index 1)
-    gold22_str = format_with_commas(found_1g_prices[1])
-elif len(found_1g_prices) == 1:
-    # Only found one table? Assume it's the 22k one just to be safe, or 24k.
-    gold22_str = format_with_commas(found_1g_prices[0])
+# LOGIC:
+# The prices on the page are usually:
+# ~1,43,000 (24k 10g)
+# ~1,31,000 (22k 10g)
+# ~14,300   (24k 1g)
+# ~13,100   (22k 1g)
 
-if len(found_10g_prices) >= 1:
-    # We want the MOST EXPENSIVE 10g price for the 24k box
-    # (Usually 24k is the top table, so index 0 is safe)
-    gold24_str = format_with_commas(found_10g_prices[0])
+# We want 24k (10g) -> Highest value > 100,000
+for p in found_prices:
+    if p > 100000:
+        gold24 = "{:,}".format(p) # Format back to 1,43,400
+        break
 
-# 3. SAVE
+# We want 22k (1g) -> Value around 13,000 (but less than 24k 1g)
+# We look for a price between 10,000 and 20,000
+possible_1g = [p for p in found_prices if 10000 < p < 20000]
+
+if len(possible_1g) >= 2:
+    # If we find 14k and 13k, the SMALLER one is 22k
+    gold22 = "{:,}".format(possible_1g[1]) # The second highest is 22k
+elif len(possible_1g) == 1:
+    # If we only find one, it's risky, but assume it's the rate
+    gold22 = "{:,}".format(possible_1g[0])
+
+# 3. SAVE TO JSON
 data = {
-    "gold22": gold22_str,
-    "gold24": gold24_str,
-    "silver": "88,000.00",
+    "gold22": gold22,
+    "gold24": gold24,
+    "silver": silver,
     "timestamp": datetime.datetime.now().strftime("%I:%M %p")
 }
 
-print(f"Debug 1g Found: {found_1g_prices}")
-print(f"Debug 10g Found: {found_10g_prices}")
-print(f"Saving Data: {data}")
+print(f"FINAL SAVED DATA: {data}")
 
 with open('rates.json', 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
