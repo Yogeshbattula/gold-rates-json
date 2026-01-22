@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import json
 import datetime
 
-# 1. FETCH DATA
+# 1. SETUP
 url = "https://telugu.goodreturns.in/gold-rates/hyderabad.html"
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
 
@@ -15,21 +15,23 @@ except Exception as e:
     print(f"Error connecting: {e}")
     soup = None
 
-# 2. LISTS TO STORE FOUND PRICES
-prices_1g = []
-prices_10g = []
+# Lists to hold all the numbers we find
+found_1g_prices = []
+found_10g_prices = []
 
 def clean_price_to_int(price_str):
-    # Turns "₹ 14,340" into the number 14340 for math comparison
+    # Turns "₹ 14,340" into the integer 14340
     clean = price_str.replace('₹', '').replace('Rs', '').replace(',', '').strip()
-    return int(clean) if clean.isdigit() else 0
+    if clean.isdigit():
+        return int(clean)
+    return 0
 
-def format_price(price_int):
+def format_with_commas(price_int):
     # Turns 14340 back into "14,340"
     return "{:,}".format(price_int)
 
 if soup:
-    # FIND ALL TABLES ON THE PAGE
+    # Get ALL tables on the page
     tables = soup.find_all("table")
     
     for table in tables:
@@ -38,55 +40,57 @@ if soup:
             cols = row.find_all("td")
             if not cols: continue
             
-            amount = cols[0].get_text().strip()
+            # Get the exact text from the first column (e.g., "1" or "10")
+            amount_text = cols[0].get_text().strip()
             price_text = cols[1].get_text().strip()
             
-            # Check for "1 Gram" Rows
-            if amount == "1" or amount == "1 Gram" or amount == "1 గ్రాము":
-                p_val = clean_price_to_int(price_text)
-                if p_val > 1000: # Filter out weird small numbers
-                    prices_1g.append(p_val)
+            price_val = clean_price_to_int(price_text)
             
-            # Check for "10 Gram" Rows
-            if amount == "10" or amount == "10 Gram" or amount == "10 గ్రాముల":
-                p_val = clean_price_to_int(price_text)
-                if p_val > 10000:
-                    prices_10g.append(p_val)
+            # LOGIC: If column 1 says "1", save the price
+            if amount_text == "1" or amount_text == "1 Gram" or amount_text == "1 గ్రాము":
+                if price_val > 1000: # Ignore zeroes
+                    found_1g_prices.append(price_val)
+            
+            # LOGIC: If column 1 says "10", save the price
+            if amount_text == "10" or amount_text == "10 Gram" or amount_text == "10 గ్రాముల":
+                if price_val > 10000:
+                    found_10g_prices.append(price_val)
 
-# 3. APPLY MATH LOGIC
-# Sort the lists. Highest is 24k, Lowest (but valid) is 22k.
-prices_1g.sort(reverse=True)   # [14340, 13145]
-prices_10g.sort(reverse=True)  # [143400, 131450]
+# --- THE MATH ---
+# 1. Sort lists from Highest to Lowest
+found_1g_prices.sort(reverse=True)   # Example: [14340, 13145]
+found_10g_prices.sort(reverse=True)  # Example: [143400, 131450]
 
-# Default values if scraping fails
-gold22_val = 0
-gold24_val = 0
+gold22_str = "0"
+gold24_str = "0"
 
-if len(prices_1g) >= 2:
-    gold24_val_1g = prices_1g[0] # Highest (Expensive)
-    gold22_val = prices_1g[1]    # Second Highest (Cheaper)
-elif len(prices_1g) == 1:
-    gold24_val_1g = prices_1g[0] # Assume only found 24k
+# 2. Identify 22k vs 24k based on price
+# The HIGHER price is always 24k. The LOWER price is 22k.
 
-if len(prices_10g) >= 1:
-    gold24_val = prices_10g[0]   # We want 10g for the 24k box
+if len(found_1g_prices) >= 2:
+    # We found both tables!
+    # 22k is the CHEAPER one (index 1)
+    gold22_str = format_with_commas(found_1g_prices[1])
+elif len(found_1g_prices) == 1:
+    # Only found one table? Assume it's the 22k one just to be safe, or 24k.
+    gold22_str = format_with_commas(found_1g_prices[0])
 
-# 4. FINAL FORMATTING (Add commas back)
-gold22_str = format_price(gold22_val)      # e.g. "13,145"
-gold24_str = format_price(gold24_val)      # e.g. "1,43,400"
-silver = "88,000.00"
+if len(found_10g_prices) >= 1:
+    # We want the MOST EXPENSIVE 10g price for the 24k box
+    # (Usually 24k is the top table, so index 0 is safe)
+    gold24_str = format_with_commas(found_10g_prices[0])
 
-# 5. SAVE
+# 3. SAVE
 data = {
     "gold22": gold22_str,
     "gold24": gold24_str,
-    "silver": silver,
+    "silver": "88,000.00",
     "timestamp": datetime.datetime.now().strftime("%I:%M %p")
 }
 
-print(f"Found Prices (1g): {prices_1g}")
-print(f"Found Prices (10g): {prices_10g}")
-print(f"Final Data: {data}")
+print(f"Debug 1g Found: {found_1g_prices}")
+print(f"Debug 10g Found: {found_10g_prices}")
+print(f"Saving Data: {data}")
 
 with open('rates.json', 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
